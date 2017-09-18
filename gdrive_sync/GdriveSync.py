@@ -1,6 +1,7 @@
-from gdrive_sync import utils, LocalFSEventHandler
 from os import path
 from watchdog import observers
+from gdrive_sync import utils, LocalFSEventHandler, Db
+import time
 
 logger = utils.create_logger(__name__)
 
@@ -11,13 +12,13 @@ class GdriveSync:
     '''
     
     def __init__(self):
-        self._remote_file_id_dict = {}
         self._local_dir_observer_dict = {}
+        self._db_handler = Db.DbHandler()
     
     def _process_dir_pairs(self, service, dir_pairs):
         '''
         Syncs the local and remote dirs with each other.
-        Also saves the local_dir inode numbers and remote_dir_ids in the _remote_file_id_dict
+        Also saves the local_dir_paths and remote_dir_ids in the Db
         
         Args:
             service: A googleapiclient.discovery.Resource object
@@ -25,13 +26,18 @@ class GdriveSync:
                 "utils.get_user_settings()['synced_dirs']"
         '''
         for local_dir, remote_dir in dir_pairs.items():
-            remote_dir_id = utils.get_remote_dir(service, 'root', remote_dir.split('/')[1:])
-            self._remote_file_id_dict[utils.get_inode_no(local_dir)] = remote_dir_id
-            remote_files_under_dir = utils.get_remote_files_from_dir(service, remote_dir_id)
+            remote_dir = utils.get_remote_dir(service, 
+                                                 'root', 
+                                                 remote_dir.split('/')[1:])
+            self._db_handler.insert_record(local_dir, 
+                                           remote_dir['id'], 
+                                           utils.convert_rfc3339_time_to_epoch(remote_dir['modifiedTime']))
+            remote_files_under_dir = utils.get_remote_files_from_dir(service, 
+                                                                     remote_dir['id'])
             local_files_under_dir = utils.list_files_under_local_dir(local_dir)
             self._compare_and_sync_files(service, 
                                          remote_files_under_dir, 
-                                         remote_dir_id, 
+                                         remote_dir['id'], 
                                          local_files_under_dir, 
                                          local_dir)
     
@@ -41,8 +47,7 @@ class GdriveSync:
         Compares the local and remote files by name and modification date
         and whichever is last modified replaces the other one with same name.
         
-        It also populates the _remote_file_id_dict with inode no of the local files
-        as key and id of the remote files as value
+        It also saves the local_file_paths and remote_file_ids to Db.
         
         TODO: If it's a directory, then the containing files are compared instead.
         
@@ -63,6 +68,7 @@ class GdriveSync:
         
         for each_file in local_files:
             if each_file.name in remote_file_dict:
+                remote_file_last_modified_time = 0
                 remote_file_modified_time = utils.convert_rfc3339_time_to_epoch(
                     remote_file_dict[each_file.name]['modifiedTime'])
                 
@@ -70,22 +76,32 @@ class GdriveSync:
                     utils.overwrite_remote_file_with_local(service, 
                                                            remote_file_dict[each_file.name]['id'], 
                                                            each_file.path)
+                    remote_file_last_modified_time = remote_file_modified_time
                 elif remote_file_modified_time > each_file.stat().st_mtime: 
                     utils.copy_remote_file_to_local(service, 
                                                     each_file.path, 
                                                     remote_file_dict[each_file.name]['id'])
-                self._remote_file_id_dict[each_file.inode()] = remote_file_dict[each_file.name]['id']
+                    remote_file_last_modified_time = int(time.time())
+                self._db_handler.insert_record(each_file.path, 
+                                               remote_file_dict[each_file.name]['id'], 
+                                               remote_file_last_modified_time)
                 del remote_file_dict[each_file.name]
             else:
-                self._remote_file_id_dict[each_file.inode()] = utils.copy_local_file_to_remote(each_file.path,
-                                                                                               remote_parent_dir_id,
-                                                                                               service)
+                remote_file_id = utils.copy_local_file_to_remote(each_file.path,
+                                                                 remote_parent_dir_id,
+                                                                 service)
+                self._db_handler.insert_record(each_file.path, 
+                                               remote_file_id, 
+                                               int(time.time()))
         
         for file_name, file in remote_file_dict.items():
-            inode = utils.copy_remote_file_to_local(service, 
-                                            path.join(local_parent_dir, file_name), 
+            local_file_path = path.join(local_parent_dir, file_name)
+            utils.copy_remote_file_to_local(service, 
+                                            local_file_path, 
                                             file['id'])
-            self._remote_file_id_dict[inode] =  file['id']
+            self._db_handler.insert_record(local_file_path,
+                                           file['id'],
+                                           int(time.time()))
     
     def sync_onetime(self, synced_dirs_dict):
         '''
@@ -102,19 +118,19 @@ class GdriveSync:
         '''
         It listens for the given directory and if any file/directory change event happens, it syncs 
         the change with the remote. It returns the observer object after starting it. 
-        It should be run after _compare_and_sync_files to populate the _remote_file_id_dict first.
+        It should be run after _compare_and_sync_files to populate the Db first.
         Args:
             dir_to_watch: 'A String' that represents the path to the directory to watch
         Returns:
             An object of watchdog.observers.Observer.
         '''
-        event_handler = LocalFSEventHandler.LocalFSEventHandler(self._remote_file_id_dict)
+        event_handler = LocalFSEventHandler.LocalFSEventHandler(self._db_handler)
         observer = observers.Observer()
         observer.schedule(event_handler, dir_to_watch, recursive=True)
         observer.start()
         return observer
     
-    def start_sync(self):
+    def start_sync(self):#TODO: Write test
         '''
         This is the method to be invoked for starting the sync. 
         
@@ -127,9 +143,9 @@ class GdriveSync:
         synced_dirs_from_settings = utils.get_user_settings()['synced_dirs']
         self.sync_onetime(synced_dirs_from_settings)
         for local_dir in synced_dirs_from_settings.keys():
-            self._local_dir_observers[local_dir] = self._watch_local_dir(local_dir)
+            self._local_dir_observer_dict[local_dir] = self._watch_local_dir(local_dir)
     
-    def stop_sync(self):
+    def stop_sync(self):#TODO: Write test
         '''
         This is to stop the sync and shutdown all the observers
         '''

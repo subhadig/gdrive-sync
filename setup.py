@@ -14,7 +14,8 @@ setup(
         'Topic :: Google drive client',
         ],
         install_requires=['google-api-python-client',
-                          'watchdog'],
+                          'watchdog',
+                          'pydblite'],
         entry_points={
             'console_scripts': [
                 #'run-ios-push-server=batch.servers.ios_push_client_server:run_server'

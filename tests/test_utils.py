@@ -1,5 +1,5 @@
-from unittest import TestCase
 import os
+from unittest import TestCase
 from unittest.mock import Mock, patch, MagicMock, call
 
 os.chdir('../gdrive_sync')
@@ -58,15 +58,13 @@ class TestUtils(TestCase):
         mocked_service.files.return_value.update.assert_called_once_with(fileId='test id', media_body='test path')
         mocked_service.files.return_value.update.return_value.execute.assert_called_once_with()
         
-    @patch('gdrive_sync.utils.get_inode_no', autospec=True)
-    def test_copy_remote_file_to_local(self, get_inode_no_mock):
+    def test_copy_remote_file_to_local(self):
         mocked_service = Mock()
         mocked_service.files.return_value.get_media.return_value.execute.return_value = b'test content'
-        get_inode_no_mock.return_value = 101
         
-        self.assertEqual(101, utils.copy_remote_file_to_local(mocked_service,
-                                                              '/tmp/gdrive_test.txt', 
-                                                              'Test id'))
+        utils.copy_remote_file_to_local(mocked_service,
+                                        '/tmp/gdrive_test.txt', 
+                                        'Test id')
         
         mocked_service.files.assert_called_once_with()
         mocked_service.files.return_value.get_media.assert_called_once_with(fileId='Test id')
@@ -74,7 +72,6 @@ class TestUtils(TestCase):
         with open('/tmp/gdrive_test.txt', 'r') as file:
             self.assertEqual('test content', file.read())
         os.remove('/tmp/gdrive_test.txt')
-        get_inode_no_mock.assert_called_once_with('/tmp/gdrive_test.txt')
 
 
     @patch('os.path.basename', autospec=True)
@@ -123,18 +120,19 @@ class TestUtils(TestCase):
     
     def test_get_remote_dir(self):
         mocked_service = Mock()
-        mocked_result_1 = {'files': [ {'id': 'id_1'} ]}
-        mocked_result_2 = {'files': [ {'id': 'id_2'} ]}
+        mocked_result_1 = {'files': [ {'id': 'id_1', 'modifiedTime': ', modifiedTime_1'} ]}
+        mocked_result_2 = {'files': [ {'id': 'id_2', 'modifiedTime': ', modifiedTime_1'} ]}
         mocked_list_drive_files = Mock(side_effect=[mocked_result_1, mocked_result_2])
         
         with patch('gdrive_sync.utils.list_drive_files', mocked_list_drive_files):
-            self.assertEqual('id_2', utils.get_remote_dir(mocked_service, 'root', ['dir1', 'dir2']))
+            self.assertEqual({'id': 'id_2', 'modifiedTime': ', modifiedTime_1'}, 
+                             utils.get_remote_dir(mocked_service, 'root', ['dir1', 'dir2']))
         
         calls = [call(mocked_service,
-                      "nextPageToken, files(id)",
+                      "nextPageToken, files(id, modifiedTime)",
                       query="'root' in parents and name = 'dir1'"),
                  call(mocked_service,
-                      "nextPageToken, files(id)",
+                      "nextPageToken, files(id, modifiedTime)",
                       query="'id_1' in parents and name = 'dir2'")]
         mocked_list_drive_files.assert_has_calls(calls)
     
@@ -223,4 +221,18 @@ class TestUtils(TestCase):
         
         mock_check_and_get_service.assert_called_once_with(None)
         mocked_service.files.assert_called_once_with()
-        mocked_service.files.return_value.delete.assert_called_once_with('remote_file_id')
+        mocked_service.files.return_value.delete.assert_called_once_with(fileId='remote_file_id')
+        mocked_service.files.return_value.delete.return_value.execute.assert_called_once_with()
+    
+    @patch('gdrive_sync.utils.check_and_get_service', autospec=True)
+    def test_update_remote_file(self, mock_check_and_get_service):
+        mocked_service = Mock()
+        mock_check_and_get_service.return_value = mocked_service
+        
+        utils.update_remote_file('remote_file_id', 'local_file_path')
+        
+        mock_check_and_get_service.assert_called_once_with(None)
+        mocked_service.files.assert_called_once_with()
+        mocked_service.files.return_value.update.assert_called_once_with(fileId='remote_file_id',
+                                                                         media_body='local_file_path')
+        mocked_service.files.return_value.update.return_value.execute.assert_called_once_with()

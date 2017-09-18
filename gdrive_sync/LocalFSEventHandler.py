@@ -6,47 +6,38 @@ logger = utils.create_logger(__name__)
 
 class LocalFSEventHandler(FileSystemEventHandler):
     
-    def __init__(self, remote_file_id_dict, *args, **kwargs):
+    def __init__(self, db_handler, *args, **kwargs):
         '''
         Args:
-            remote_file_id_dict: A dict comprised of local file inode numbers
-                and remote file id 
+            db_handler: An object of Db.DbHandler
         '''
         FileSystemEventHandler.__init__(self, *args, **kwargs)
-        self._remote_file_id_dict = remote_file_id_dict
+        self._db_handler = db_handler
     
     def on_any_event(self, event):
         pass
     
     def on_created(self, event):
-        logger.debug('Created {}'.format(event.src_path))
+        logger.debug('Created %s', event.src_path)
         if event.is_directory:
             pass #utils.create_remote_dir
         else:
             utils.copy_local_file_to_remote(event.src_path, 
-                                            self._remote_file_id_dict[
-                                                utils.get_inode_no(
-                                                    os.path.dirname(
-                                                        event.src_path))])
+                                            self._db_handler.get_remote_file_id(
+                                                os.path.dirname(event.src_path)))
         
     def on_deleted(self, event):
-        logger.debug('Deleted {}'.format(event.src_path))
-        utils.delete_file_on_remote(
-            self._remote_file_id_dict[
-                utils.get_inode_no(
-                    event.src_path)])
+        logger.debug('Deleted %s', event.src_path)
+        utils.delete_file_on_remote(self._db_handler.get_remote_file_id(event.src_path))
     
     def on_modified(self, event):
-        logger.debug('Modified {}'.format(event.src_path))
+        logger.debug('Modified %s',event.src_path)
         if event.is_directory:
             pass #utils.copy_dir_to_remote
         else:
-            utils.copy_local_file_to_remote(event.src_path, 
-                                            self._remote_file_id_dict[
-                                                utils.get_inode_no(
-                                                    os.path.dirname(
-                                                        event.src_path))])
+            utils.update_remote_file(self._db_handler.get_remote_file_id(event.src_path),
+                                     event.src_path)
     
     def on_moved(self, event):
-        logger.debug('Moved from {} to {}'.format(event.src_path, event.dest_path))
+        logger.debug('Moved from %s to %s', event.src_path, event.dest_path)
         pass

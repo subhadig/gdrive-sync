@@ -53,16 +53,16 @@ def get_user_settings():
     settings_path = os.path.join(get_gdrive_sync_home(), 'settings.json')
     if not os.path.exists(settings_path):
         store_user_settings(_user_settings_template)
-    with open(settings_path, mode = 'r', encoding = 'utf-8') as file:
-        return json.load(file)
+    with open(settings_path, mode = 'r', encoding = 'utf-8') as _file:
+        return json.load(_file)
     
 def store_user_settings(settings):
     '''
     Stores the settings object to file
     '''
     settings_path = os.path.join(get_gdrive_sync_home(), 'settings.json')
-    with open(settings_path, mode = 'w', encoding = 'utf-8') as file:
-        json.dump(settings, file)
+    with open(settings_path, mode = 'w', encoding = 'utf-8') as _file:
+        json.dump(settings, _file)
 
 def list_drive_files(service, fields, query=None, nextPageToken=None):
     '''
@@ -113,13 +113,11 @@ def copy_remote_file_to_local(service, local_file_path, remote_file_id):
         service: A googleapiclient.discovery.Resource object
         local_file_path: 'A String' that represents path the local file
         remote_file_id: 'A String' that represents id for the file object from google drive
-    Returns:
-        The inode number of the local file
     '''
     remote_content = service.files().get_media(fileId=remote_file_id).execute()
-    with open(local_file_path, 'bw') as file:
-        file.write(remote_content)
-    return get_inode_no(local_file_path)
+    with open(local_file_path, 'bw') as _file:
+        _file.write(remote_content)
+    #return get_inode_no(local_file_path)
 
 def copy_local_file_to_remote(local_file_path, remote_parent_dir_id, service=None):
     '''
@@ -165,50 +163,55 @@ def get_remote_dir(service, parent_dir_id, dir_list):
         dir_list: A list of String, contains the path from parent dir to child dir
                 Example: /root/home/user will be represented as ['root', 'home', 'user']
     Returns:
-        'A String' id of the directory from google drive
+        A dict of below form:
+            {
+                'id': 'A String' id of the directory from google drive
+                'modifiedTime': 'A string' date in rfc3339 format
+            }
+        
     '''
-    results = list_drive_files(service, "nextPageToken, files(id)",
+    results = list_drive_files(service, "nextPageToken, files(id, modifiedTime)",
                                      query="'{}' in parents and name = '{}'".format(parent_dir_id, dir_list[0]))
     this_dir_id = results['files'][0]['id']
     if len(dir_list) == 1:
-        return this_dir_id
+        return results['files'][0]
     else:
         return get_remote_dir(service, this_dir_id, dir_list[1:])
 
 def get_credentials():
-        '''
-        Retrieves the credential from user's home directory. If credential 
-        does not exist, it opens a browser and authenticates
-        
-        Returns:
-            An object of type oauth2client.client.Credentials
-        '''
-        credential_path = path.join(get_gdrive_sync_home(), 'credential.json')
-        store = file.Storage(credential_path)
-        credentials = store.get()
-        if not credentials or credentials.invalid:
-            flow = client.flow_from_clientsecrets('client_secret.json', configs.get_config('DEFAULT', 'scopes'))
-            flow.user_agent = configs.get_config('DEFAULT', 'application_name')
-            credentials = tools.run_flow(flow, store, _flags)
-        return credentials
+    '''
+    Retrieves the credential from user's home directory. If credential 
+    does not exist, it opens a browser and authenticates
+    
+    Returns:
+        An object of type oauth2client.client.Credentials
+    '''
+    credential_path = path.join(get_gdrive_sync_home(), 'credential.json')
+    store = file.Storage(credential_path)
+    credentials = store.get()
+    if not credentials or credentials.invalid:
+        flow = client.flow_from_clientsecrets('client_secret.json', configs.get_config('DEFAULT', 'scopes'))
+        flow.user_agent = configs.get_config('DEFAULT', 'application_name')
+        credentials = tools.run_flow(flow, store, _flags)
+    return credentials
 
 def get_service():
-        '''
-        Returns:
-            A googleapiclient.discovery.Resource object with methods for interacting with the service.
-        '''
-        credentials = get_credentials()
-        http = credentials.authorize(httplib2.Http())
-        return discovery.build('drive', 'v3', http=http)
+    '''
+    Returns:
+        A googleapiclient.discovery.Resource object with methods for interacting with the service.
+    '''
+    credentials = get_credentials()
+    http = credentials.authorize(httplib2.Http())
+    return discovery.build('drive', 'v3', http=http)
 
-def get_inode_no(path):
+def get_inode_no(path_to_file):
     '''
     Args:
         'A String' to the path of the file
     Retruns:
         A number. The inode number of the file
     '''
-    return os.stat(path).st_ino
+    return os.stat(path_to_file).st_ino
 
 def check_and_get_service(service=None):
     '''
@@ -231,4 +234,15 @@ def delete_file_on_remote(remote_file_id, service=None):
         remote_file_id: 'A String' id of the file/directory from google drive
         service: A googleapiclient.discovery.Resource object
     '''
-    check_and_get_service(service).files().delete(remote_file_id)
+    check_and_get_service(service).files().delete(fileId=remote_file_id).execute()
+
+def update_remote_file(remote_file_id, local_file_path, service=None):
+    '''
+    Updates the content of the remote file with local file content
+    Args:
+        remote_file_id: 'A String' id of the file/directory from google drive
+        local_file_path: 'A String' representation of the local file path
+        service: A googleapiclient.discovery.Resource object
+    '''
+    check_and_get_service(service).files().update(fileId=remote_file_id, 
+                                                  media_body=local_file_path).execute()
