@@ -2,6 +2,7 @@ from os import path
 from watchdog import observers
 from gdrive_sync import utils, LocalFSEventHandler, Db
 import time
+import os
 
 logger = utils.create_logger(__name__)
 
@@ -29,8 +30,10 @@ class GdriveSync:
             remote_dir = utils.get_remote_dir(service, 
                                                  'root', 
                                                  remote_dir.split('/')[1:])
+            #TODO: Use a function that will check duplicate before inserting
             self._db_handler.insert_record(local_dir, 
-                                           remote_dir['id'], 
+                                           remote_dir['id'],
+                                           os.stat(local_dir).st_mtime,
                                            utils.convert_rfc3339_time_to_epoch(remote_dir['modifiedTime']))
             remote_files_under_dir = utils.get_remote_files_from_dir(service, 
                                                                      remote_dir['id'])
@@ -67,33 +70,59 @@ class GdriveSync:
         remote_file_dict = {file['name']: file for file in remote_files}
         
         for each_file in local_files:
+            #If local file exists at remote
             if each_file.name in remote_file_dict:
-                remote_file_last_modified_time = 0
+                
                 remote_file_modified_time = utils.convert_rfc3339_time_to_epoch(
                     remote_file_dict[each_file.name]['modifiedTime'])
                 
-                if remote_file_modified_time < each_file.stat().st_mtime:
-                    utils.overwrite_remote_file_with_local(service, 
-                                                           remote_file_dict[each_file.name]['id'], 
-                                                           each_file.path)
-                    remote_file_last_modified_time = remote_file_modified_time
+                #If local file modification time is newer than remote file modification time
+                if each_file.stat().st_mtime > remote_file_modified_time:
+                    
+                    local_modification_date_in_db = self._db_handler.get_local_modification_date(each_file.path)
+                    
+                    #If local file modification time is newer than saved in db
+                    if (not local_modification_date_in_db or
+                        each_file.stat().st_mtime > local_modification_date_in_db ):
+                        
+                        utils.overwrite_remote_file_with_local(service, 
+                                                               remote_file_dict[each_file.name]['id'], 
+                                                               each_file.path)
+                        
+                        self._db_handler.update_record(each_file.path, 
+                                                       remote_file_dict[each_file.name]['id'], 
+                                                       each_file.stat().st_mtime, 
+                                                       remote_file_modified_time)
+                
+                #If remote file modification time is newer than local file modification time     
                 elif remote_file_modified_time > each_file.stat().st_mtime: 
-                    utils.copy_remote_file_to_local(service, 
-                                                    each_file.path, 
-                                                    remote_file_dict[each_file.name]['id'])
-                    remote_file_last_modified_time = int(time.time())
-                self._db_handler.insert_record(each_file.path, 
-                                               remote_file_dict[each_file.name]['id'], 
-                                               remote_file_last_modified_time)
+                    
+                    remote_file_modification_time_in_db = self._db_handler.get_remote_modification_date(
+                                                                    remote_file_dict[each_file.name]['id'])
+                    
+                    #If remote file modification time is newer than saved in db
+                    if (not remote_file_modification_time_in_db or
+                        remote_file_modified_time > remote_file_modification_time_in_db ):
+                        
+                        utils.copy_remote_file_to_local(service, 
+                                                        each_file.path, 
+                                                        remote_file_dict[each_file.name]['id'])
+                        
+                        self._db_handler.update_record(each_file.path, 
+                                                       remote_file_dict[each_file.name]['id'],
+                                                       each_file.stat().st_mtime,
+                                                       int(time.time()))
                 del remote_file_dict[each_file.name]
-            else:
+            else: #local file does not exist at remote
                 remote_file_id = utils.copy_local_file_to_remote(each_file.path,
                                                                  remote_parent_dir_id,
                                                                  service)
                 self._db_handler.insert_record(each_file.path, 
-                                               remote_file_id, 
+                                               remote_file_id,
+                                               each_file.stat().st_mtime,
                                                int(time.time()))
         
+        #remote files not existing in local
         for file_name, file in remote_file_dict.items():
             local_file_path = path.join(local_parent_dir, file_name)
             utils.copy_remote_file_to_local(service, 
@@ -101,7 +130,8 @@ class GdriveSync:
                                             file['id'])
             self._db_handler.insert_record(local_file_path,
                                            file['id'],
-                                           int(time.time()))
+                                           int(time.time()),
+                                           utils.convert_rfc3339_time_to_epoch(file['modifiedTime']))
     
     def sync_onetime(self, synced_dirs_dict):
         '''

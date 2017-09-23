@@ -6,7 +6,7 @@ import time
 
 os.chdir('../gdrive_sync')
 from gdrive_sync.GdriveSync import GdriveSync
-from gdrive_sync import utils
+from gdrive_sync import utils, Db
 
 logger = utils.create_logger(__name__)
 
@@ -69,39 +69,52 @@ class TestGdriveSync(TestCase):
                                     mock_copy_local_file_to_remote,
                                     mock_time):
         mocked_service = Mock()
+        
+        #remote files mock
         remote_files = [{'id': '1', 'name': 'file1', 'modifiedTime': 'modifiedTime1'},
                         {'id': '2', 'name': 'file2', 'modifiedTime': 'modifiedTime2'},
                         {'id': '3', 'name': 'file3', 'modifiedTime': 'modifiedTime3'}] #remote file will be copied to local
+        
+        #local files mock
         local_file_mock_1 = Mock()
         local_file_mock_1.name = 'file1'
         local_file_mock_1.path = 'path1'
         local_file_mock_1.stat.return_value.st_mtime = 101
-        local_file_mock_1.inode.return_value = 1001
         local_file_mock_2 = Mock()
         local_file_mock_2.name = 'file2'
         local_file_mock_2.path = 'path2'
         local_file_mock_2.stat.return_value.st_mtime = 99
-        local_file_mock_2.inode.return_value = 1002
         local_file_mock_4 = Mock(name='file4', path='path4')
         local_file_mock_4.name = 'file4'
         local_file_mock_4.path = 'path4'
-        local_file_mock_4.inode.return_value = 1004
+        local_file_mock_4.stat.return_value.st_mtime = 98
         local_files = [local_file_mock_1, #local file will replace remote 
                        local_file_mock_2, #remote file will replace local
                        local_file_mock_4] #local file will be copied to remote
+        
+        #utils mocks
         mock_convert_rfc3339_time_to_epoch.return_value = 100
         mock_copy_local_file_to_remote.return_value = '4'
-        mock_time.return_value = 101
-        self.gdriveSync._db_handler = Mock()
         
+        #other mocks
+        mock_time.return_value = 99999999
+        
+        #db_handler mocks
+        self.gdriveSync._db_handler = Mock(Db.DbHandler)
+        self.gdriveSync._db_handler.get_local_modification_date.return_value = 80
+        self.gdriveSync._db_handler.get_remote_modification_date.return_value = 80
+        
+        #actual method call
         self.gdriveSync._compare_and_sync_files(mocked_service, 
                                                 remote_files, 
                                                 'remote_parent_dir_id1', 
                                                 local_files, 
                                                 'local_parent_dir1')
         
+        #assertions
         mock_convert_rfc3339_time_to_epoch.assert_has_calls([call('modifiedTime1'),
-                                                               call('modifiedTime2')])
+                                                             call('modifiedTime2'),
+                                                             call('modifiedTime3')])
         mock_overwrite_remote_file_with_local.assert_called_once_with(mocked_service,
                                                                       '1',
                                                                       'path1')
@@ -114,10 +127,18 @@ class TestGdriveSync(TestCase):
         mock_copy_local_file_to_remote.assert_called_once_with('path4',
                                                                'remote_parent_dir_id1',
                                                                mocked_service)
-        self.gdriveSync._db_handler.insert_record.assert_has_calls([call('path1', '1', 100),
-                                                      call('path2', '2', 101),
-                                                      call('path4', '4', 101),
-                                                      call('local_parent_dir1/file3', '3', 101)])
+        self.gdriveSync._db_handler.insert_record.assert_has_calls([call('path4', 
+                                                                         '4', 
+                                                                         98, 
+                                                                         99999999),
+                                                                    call('local_parent_dir1/file3', 
+                                                                         '3', 
+                                                                         99999999, 
+                                                                         100)])
+        self.gdriveSync._db_handler.update_record.assert_has_calls([call('path1', '1', 101, 100),
+                                                                    call('path2', '2', 99, 99999999)])
+        self.gdriveSync._db_handler.get_local_modification_date.assert_called_once_with('path1')
+        self.gdriveSync._db_handler.get_remote_modification_date.assert_called_once_with('2')
     
     @patch('gdrive_sync.utils.get_service', autospec=True)
     def test_sync_onetime(self, mocked_get_service):
@@ -145,7 +166,7 @@ class TestGdriveSync(TestCase):
         
         mock_observer.return_value.start.assert_called_once_with()
     
-    @skip("This needs to run manually")
+    #@skip("This needs to run manually")
     def test_watch_local_dir_manual(self):
         logger.info('Starting _process_dir_pairs')
         self.gdriveSync._process_dir_pairs(utils.get_service(), {'/tmp/gdrive-sync': '/test folder'})
