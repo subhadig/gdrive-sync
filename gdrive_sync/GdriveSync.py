@@ -30,7 +30,6 @@ class GdriveSync:
             remote_dir = utils.get_remote_dir(service, 
                                                  'root', 
                                                  remote_dir.split('/')[1:])
-            #TODO: Use a function that will check duplicate before inserting
             self._db_handler.insert_record(local_dir, 
                                            remote_dir['id'],
                                            os.stat(local_dir).st_mtime,
@@ -44,7 +43,11 @@ class GdriveSync:
                                          local_files_under_dir, 
                                          local_dir)
     
-    def _compare_and_sync_files(self, service, remote_files, remote_parent_dir_id, local_files, 
+    def _compare_and_sync_files(self, 
+                                service, 
+                                remote_files, 
+                                remote_parent_dir_id, 
+                                local_files, 
                                 local_parent_dir):
         '''
         Compares the local and remote files by name and modification date
@@ -71,6 +74,7 @@ class GdriveSync:
         
         for each_file in local_files:
             #If local file exists at remote
+            logger.debug('Looking up %s in remote.', each_file.name)
             if each_file.name in remote_file_dict:
                 
                 remote_file_modified_time = utils.convert_rfc3339_time_to_epoch(
@@ -80,19 +84,24 @@ class GdriveSync:
                 if each_file.stat().st_mtime > remote_file_modified_time:
                     
                     local_modification_date_in_db = self._db_handler.get_local_modification_date(each_file.path)
-                    
+                    actual_local_modification_date = int(each_file.stat().st_mtime)
                     #If local file modification time is newer than saved in db
                     if (not local_modification_date_in_db or
-                        each_file.stat().st_mtime > local_modification_date_in_db ):
+                        actual_local_modification_date > local_modification_date_in_db ):
+                        
+                        logger.debug('each_file.stat().st_mtime %s, local_modification_date_in_db %s.', 
+                                     each_file.stat().st_mtime, 
+                                     local_modification_date_in_db)
+                        logger.debug('Overwriting %s in local.', each_file.path)
                         
                         utils.overwrite_remote_file_with_local(service, 
                                                                remote_file_dict[each_file.name]['id'], 
                                                                each_file.path)
                         
-                        self._db_handler.update_record(each_file.path, 
+                        self._db_handler.insert_record(each_file.path, 
                                                        remote_file_dict[each_file.name]['id'], 
-                                                       each_file.stat().st_mtime, 
-                                                       remote_file_modified_time)
+                                                       actual_local_modification_date, 
+                                                       int(time.time()))
                 
                 #If remote file modification time is newer than local file modification time     
                 elif remote_file_modified_time > each_file.stat().st_mtime: 
@@ -104,16 +113,24 @@ class GdriveSync:
                     if (not remote_file_modification_time_in_db or
                         remote_file_modified_time > remote_file_modification_time_in_db ):
                         
+                        logger.debug('remote_file_modified_time %s, remote_file_modification_time_in_db %s.', 
+                                     remote_file_modified_time, 
+                                     remote_file_modification_time_in_db)
+                        logger.debug('Overwriting %s in remote.', each_file.path)
+                        
                         utils.copy_remote_file_to_local(service, 
                                                         each_file.path, 
                                                         remote_file_dict[each_file.name]['id'])
                         
-                        self._db_handler.update_record(each_file.path, 
+                        self._db_handler.insert_record(each_file.path, 
                                                        remote_file_dict[each_file.name]['id'],
-                                                       each_file.stat().st_mtime,
-                                                       int(time.time()))
+                                                       int(time.time()),
+                                                       remote_file_modified_time)
                 del remote_file_dict[each_file.name]
             else: #local file does not exist at remote
+                
+                logger.debug('Creating %s in local.', each_file.path)
+                
                 remote_file_id = utils.copy_local_file_to_remote(each_file.path,
                                                                  remote_parent_dir_id,
                                                                  service)
@@ -124,7 +141,11 @@ class GdriveSync:
         
         #remote files not existing in local
         for file_name, file in remote_file_dict.items():
+            
             local_file_path = path.join(local_parent_dir, file_name)
+            
+            logger.debug('Creating %s in local.', local_file_path)
+            
             utils.copy_remote_file_to_local(service, 
                                             local_file_path, 
                                             file['id'])

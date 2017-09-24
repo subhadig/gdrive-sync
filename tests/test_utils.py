@@ -2,7 +2,6 @@ import os
 from unittest import TestCase
 from unittest.mock import Mock, patch, MagicMock, call
 
-os.chdir('../gdrive_sync')
 from gdrive_sync import utils
 
 class TestUtils(TestCase):
@@ -42,7 +41,7 @@ class TestUtils(TestCase):
             self.assertEquals('return', lists)
         
     def test_convert_rfc3339_time_to_epoch(self):
-        self.assertEqual(1498620320.954, utils.convert_rfc3339_time_to_epoch('2017-06-28T03:25:20.954Z'))
+        self.assertEqual(1498620320, utils.convert_rfc3339_time_to_epoch('2017-06-28T03:25:20.954Z'))
     
     def test_convert_epoch_time_to_rfc3339(self):
         self.assertEqual('2017-06-28T03:25:20Z', utils.convert_epoch_time_to_rfc3339(1498620320))

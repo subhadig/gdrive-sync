@@ -1,7 +1,6 @@
 from unittest import TestCase
 import os
 
-os.chdir('../gdrive_sync')
 from gdrive_sync import configs
 
 class TestConfig(TestCase):

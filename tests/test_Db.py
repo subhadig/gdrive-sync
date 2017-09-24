@@ -3,7 +3,6 @@ from unittest import TestCase
 import traceback
 import sqlite3
 
-os.chdir('../gdrive_sync')
 from gdrive_sync import Db
 
 class TestDbHandler(TestCase):
@@ -23,48 +22,17 @@ class TestDbHandler(TestCase):
     def test_init(self):
         self.assertTrue(os.path.exists(self._test_db_path), msg='Db file not created')
         
-    def test_insert_record_old(self):
-        def fetch_inserted_records(cursor):
-            cursor.execute('select * from {} where {}=?'.format('file_mapping_info',
-                                                                'local_path'),
-                           ('local_path',))
-            return cursor.fetchall()
-        
-        #Insert first record
-        self._db_handler.insert_record_old('local_path', 'remote_id', 10001)
-        
-        records = self._execute_db_function(fetch_inserted_records)
-        self.assertEqual(1, len(records))
-        self.assertEqual('remote_id', records[0][1])
-        self.assertEqual(10001, records[0][2])
-        
-        #Insert second record with lower modification_date
-        self._db_handler.insert_record_old('local_path', 'remote_id', 10000)
-        
-        records = self._execute_db_function(fetch_inserted_records)
-        self.assertEqual(1, len(records))
-        self.assertEqual('remote_id', records[0][1])
-        self.assertEqual(10001, records[0][2])
-        
-        #Insert second record with higher modification_date
-        self._db_handler.insert_record_old('local_path', 'remote_id_modified', 10002)
-        
-        records = self._execute_db_function(fetch_inserted_records)
-        self.assertEqual(1, len(records))
-        self.assertEqual('remote_id_modified', records[0][1])
-        self.assertEqual(10002, records[0][2])
-    
     def test_get_remote_file_id(self):
         def insert_records(cursor):
-            cursor.execute('insert into {} values(?, ?, ?)'.format('file_mapping_info'),
-                           ('local_path', 'remote_id', 101))
+            cursor.execute('insert into {} values(?, ?, ?, ?)'.format('file_mapping_info'),
+                           ('local_path', 'remote_id', 101, 1001))
         self._execute_db_function(insert_records)
         self.assertEqual('remote_id', self._db_handler.get_remote_file_id('local_path'))
     
     def test_get_local_file_path(self):
         def insert_records(cursor):
-            cursor.execute('insert into {} values(?, ?, ?)'.format('file_mapping_info'),
-                           ('local_path', 'remote_id', 101))
+            cursor.execute('insert into {} values(?, ?, ?, ?)'.format('file_mapping_info'),
+                           ('local_path', 'remote_id', 101, 1001))
         self._execute_db_function(insert_records)
         self.assertEqual('local_path', self._db_handler.get_local_file_path('remote_id'))
         
@@ -98,6 +66,16 @@ class TestDbHandler(TestCase):
         self.assertEqual('remote_id', records[0][1])
         self.assertEqual(10002, records[0][2])
         self.assertEqual(102, records[0][3])
+        
+        self._db_handler.insert_record('local_path', 
+                                       'remote_id_modified', 
+                                       10003, 
+                                       103)
+        records = self._execute_db_function(fetch_inserted_records)
+        self.assertEqual(1, len(records))
+        self.assertEqual('remote_id_modified', records[0][1])
+        self.assertEqual(10003, records[0][2])
+        self.assertEqual(103, records[0][3])
 
     def test_get_local_modification_date(self):
         def insert_records(cursor):
@@ -130,3 +108,19 @@ class TestDbHandler(TestCase):
         self.assertEqual('remote_id_modified', records[0][1])
         self.assertEqual(102, records[0][2])
         self.assertEqual(1002, records[0][3])
+    
+    def test_delete_record(self):
+        def insert_records(cursor):
+            cursor.execute('insert into {} values(?, ?, ?, ?)'.format('file_mapping_info'),
+                           ('local_path', 'remote_id', 101, 1001))
+        self._execute_db_function(insert_records)
+        
+        self._db_handler.delete_record('local_path')
+        
+        def fetch_records(cursor):
+            cursor.execute('select * from {} where {}=?'.format('file_mapping_info',
+                                                                'local_path'),
+                           ('local_path',))
+            return cursor.fetchall()
+        records = self._execute_db_function(fetch_records)
+        self.assertEqual(0, len(records))

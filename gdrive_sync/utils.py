@@ -76,15 +76,15 @@ def list_files_under_local_dir(dir_path):
     '''
     return os.scandir(path=dir_path)
 
-def convert_rfc3339_time_to_epoch(timestamp):
+def convert_rfc3339_time_to_epoch(timestamp): #TODO: Modify test
     '''
     Converts rfc3339 time to epoch timestamps
     Args:
         timestamp: 'A string' in rfc3339 format
     Returns:
-        Float, the converted epoch timestamp
+        Integer, the converted epoch timestamp
     '''
-    return parse(timestamp=timestamp).timestamp()
+    return int(parse(timestamp=timestamp).timestamp())
 
 def convert_epoch_time_to_rfc3339(timestamp):
     '''

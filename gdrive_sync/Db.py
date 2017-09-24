@@ -60,7 +60,8 @@ class DbHandler:
                       local_modification_date, 
                       remote_modification_date):
         '''
-        Inserts the inputs as a record in Db.
+        If no record with local_path exists, inserts the inputs as a record in Db.
+        Else updates the existing record.
         Args:
             local_path: 'A String'
             remote_id: 'A String'
@@ -68,41 +69,28 @@ class DbHandler:
             remote_modification_date: Integer
         '''
         def insert_function(cursor):
-            cursor.execute('INSERT INTO {tn} values(?, ?, ?, ?)'
-                           .format(tn=_Db_constants.FILE_MAPPING_INFO),
-                           (local_path, 
-                            remote_id,
-                            local_modification_date, 
-                            remote_modification_date))
-        self._execute_in_transaction(insert_function)
-
-    def insert_record_old(self, local_path, remote_id, remote_modification_date):
-        '''
-        Inserts a record if a record with the local_path does not exists
-        else update the existing record.
-        Args:
-            local_path: 'A String'
-            remote_id: 'A String'
-            remote_modification_date: Integer
-        '''
-        def insert_function(cursor):
-            cursor.execute('SELECT * FROM {tn} WHERE {cn1}=?'
+            cursor.execute('SELECT 1 FROM {tn} WHERE {cn1}=?'
                            .format(tn=_Db_constants.FILE_MAPPING_INFO,
                                    cn1=_Db_constants.LOCAL_PATH),
                            (local_path,))
-            existing_records = cursor.fetchall()
-            if not existing_records:
-                cursor.execute('INSERT INTO {tn} values(?, ?, ?)'
-                               .format(tn=_Db_constants.FILE_MAPPING_INFO),
-                               (local_path, remote_id, remote_modification_date))
+            if len(cursor.fetchall()):
+                cursor.execute('UPDATE {tn} SET {cn1}=?, {cn2}=?, {cn3}=? WHERE {cn4}=?'
+                           .format(tn=_Db_constants.FILE_MAPPING_INFO,
+                                   cn1=_Db_constants.REMOTE_ID,
+                                   cn2=_Db_constants.LOCAL_MODIFICATION_DATE,
+                                   cn3=_Db_constants.REMOTE_MODIFICATION_DATE,
+                                   cn4=_Db_constants.LOCAL_PATH),
+                           (remote_id,
+                            local_modification_date, 
+                            remote_modification_date,
+                            local_path))
             else:
-                if int(existing_records[0][2]) < remote_modification_date:
-                    cursor.execute('UPDATE {tn} SET {c1}=?, {c2}=? WHERE {c3}=?'
-                                   .format(tn=_Db_constants.FILE_MAPPING_INFO,
-                                           c1=_Db_constants.REMOTE_ID,
-                                           c2=_Db_constants.REMOTE_MODIFICATION_DATE,
-                                           c3=_Db_constants.LOCAL_PATH),
-                                   (remote_id, remote_modification_date, local_path))
+                cursor.execute('INSERT INTO {tn} values(?, ?, ?, ?)'
+                               .format(tn=_Db_constants.FILE_MAPPING_INFO),
+                               (local_path, 
+                                remote_id,
+                                local_modification_date, 
+                                remote_modification_date))
         self._execute_in_transaction(insert_function)
 
     def _execute_read_function(self, function):
@@ -212,6 +200,14 @@ class DbHandler:
                       remote_id, 
                       local_modification_date, 
                       remote_modification_date):
+        '''
+        Updates an existing record with local_path in Db.
+        Args:
+            local_path: 'A String'
+            remote_id: 'A String'
+            local_modification_date: Integer
+            remote_modification_date: Integer
+        '''
         def update_function(cursor):
             cursor.execute('UPDATE {tn} SET {cn1}=?, {cn2}=?, {cn3}=? WHERE {cn4}=?'
                            .format(tn=_Db_constants.FILE_MAPPING_INFO,
@@ -224,3 +220,17 @@ class DbHandler:
                             remote_modification_date,
                             local_path))
         self._execute_in_transaction(update_function)
+    
+    def delete_record(self,
+                      local_path):
+        '''
+        Deletes a record with local_path from Db.
+        Args:
+            local_path: 'A String'
+        '''
+        def delete_function(cursor):
+            cursor.execute('DELETE FROM {tn} WHERE {cn1}=?'
+                           .format(tn=_Db_constants.FILE_MAPPING_INFO,
+                                   cn1=_Db_constants.LOCAL_PATH),
+                           (local_path,))
+        self._execute_in_transaction(delete_function)
