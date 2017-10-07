@@ -2,3 +2,4 @@
 .pydevproject
 __pycache__
 .vscode
+gdrive_sync.egg-info

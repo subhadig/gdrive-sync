@@ -23,12 +23,12 @@ class LocalFSEventHandler(FileSystemEventHandler):
         if event.is_directory:
             pass #utils.create_remote_dir
         else:
-            remote_file_id = utils.copy_local_file_to_remote(event.src_path, 
+            remote_parent_dir_id = utils.copy_local_file_to_remote(event.src_path, 
                                             self._db_handler.get_remote_file_id(
                                                 os.path.dirname(event.src_path)))
             time_now = int(time.time())
             self._db_handler.insert_record(event.src_path,
-                                           remote_file_id,
+                                           remote_parent_dir_id,
                                            time_now,
                                            time_now)
         
@@ -53,3 +53,16 @@ class LocalFSEventHandler(FileSystemEventHandler):
     
     def on_moved(self, event):
         logger.debug('Moved from %s to %s', event.src_path, event.dest_path)
+        if event.is_directory:
+            pass #utils.copy_dir_to_remote
+        else:
+            utils.delete_file_on_remote(self._db_handler.get_remote_file_id(event.src_path))
+            self._db_handler.delete_record(event.src_path)
+            remote_file_id = utils.copy_local_file_to_remote(event.dest_path, 
+                                            self._db_handler.get_remote_file_id(
+                                                os.path.dirname(event.src_path)))
+            time_now = int(time.time())
+            self._db_handler.insert_record(event.dest_path,
+                                           remote_file_id,
+                                           time_now,
+                                           time_now)
