@@ -15,7 +15,8 @@ setup(
         ],
         install_requires=['google-api-python-client',
                           'watchdog',
-                          'pydblite'],
+                          'pydblite',
+                          'python-magic'],
         entry_points={
             'console_scripts': [
                 #'run-ios-push-server=batch.servers.ios_push_client_server:run_server'

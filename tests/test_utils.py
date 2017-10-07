@@ -46,16 +46,21 @@ class TestUtils(TestCase):
     def test_convert_epoch_time_to_rfc3339(self):
         self.assertEqual('2017-06-28T03:25:20Z', utils.convert_epoch_time_to_rfc3339(1498620320))
     
-    def test_overwrite_remote_file_with_local(self):
+    @patch('magic.from_file', autospec=True)
+    def test_overwrite_remote_file_with_local(self, mocked_magic):
         mocked_service = Mock()
         mocked_service.files.return_value.update.return_value.execute.return_value = 'final return'
+        mocked_magic.return_value = 'test_mime_type'
         
         self.assertEqual('final return', utils.overwrite_remote_file_with_local(
             mocked_service, 'test id', 'test path'))
         
         mocked_service.files.assert_called_once_with()
-        mocked_service.files.return_value.update.assert_called_once_with(fileId='test id', media_body='test path')
+        mocked_service.files.return_value.update.assert_called_once_with(fileId='test id', 
+                                                                         media_body='test path',
+                                                                         media_mime_type='test_mime_type')
         mocked_service.files.return_value.update.return_value.execute.assert_called_once_with()
+        mocked_magic.assert_called_once_with('test path', True)
         
     def test_copy_remote_file_to_local(self):
         mocked_service = Mock()
@@ -73,13 +78,18 @@ class TestUtils(TestCase):
         os.remove('/tmp/gdrive_test.txt')
 
 
+    @patch('magic.from_file', autospec=True)
     @patch('os.path.basename', autospec=True)
     @patch('gdrive_sync.utils.check_and_get_service', autospec=True)
-    def test_copy_local_file_to_remote(self, check_and_get_service_mock, path_basename_mock):
+    def test_copy_local_file_to_remote(self, 
+                                       check_and_get_service_mock, 
+                                       path_basename_mock, 
+                                       mocked_magic):
         mocked_service = Mock()
         mocked_service.files.return_value.create.return_value.execute.return_value = {'id': 'id1'}
         check_and_get_service_mock.return_value = mocked_service
         path_basename_mock.return_value = 'file'
+        mocked_magic.return_value = 'test_mime_type'
         
         self.assertEqual('id1', 
                          utils.copy_local_file_to_remote('/path/to/local/file', 
@@ -89,9 +99,11 @@ class TestUtils(TestCase):
         mocked_service.files.assert_called_once_with()
         mocked_service.files.return_value.create.assert_called_once_with(
             body={'parents': ['test_remote_parent_dir_id'], 'name': 'file'},
-            media_body='/path/to/local/file')
+            media_body='/path/to/local/file',
+            media_mime_type='test_mime_type')
         mocked_service.files.return_value.create.return_value.execute.assert_called_once_with()
         check_and_get_service_mock.assert_called_once_with('service')
+        mocked_magic.assert_called_once_with('/path/to/local/file', True)
         
         self.assertEqual('id1', 
                          utils.copy_local_file_to_remote('/path/to/local/file', 
@@ -223,15 +235,19 @@ class TestUtils(TestCase):
         mocked_service.files.return_value.delete.assert_called_once_with(fileId='remote_file_id')
         mocked_service.files.return_value.delete.return_value.execute.assert_called_once_with()
     
+    @patch('magic.from_file', autospec=True)
     @patch('gdrive_sync.utils.check_and_get_service', autospec=True)
-    def test_update_remote_file(self, mock_check_and_get_service):
+    def test_update_remote_file(self, mock_check_and_get_service, mocked_magic):
         mocked_service = Mock()
         mock_check_and_get_service.return_value = mocked_service
+        mocked_magic.return_value = 'test_mime_type'
         
         utils.update_remote_file('remote_file_id', 'local_file_path')
         
         mock_check_and_get_service.assert_called_once_with(None)
         mocked_service.files.assert_called_once_with()
         mocked_service.files.return_value.update.assert_called_once_with(fileId='remote_file_id',
-                                                                         media_body='local_file_path')
+                                                                         media_body='local_file_path',
+                                                                         media_mime_type='test_mime_type')
         mocked_service.files.return_value.update.return_value.execute.assert_called_once_with()
+        mocked_magic.assert_called_once_with('local_file_path', True)

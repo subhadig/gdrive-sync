@@ -92,7 +92,7 @@ class GdriveSync:
                         logger.debug('each_file.stat().st_mtime %s, local_modification_date_in_db %s.', 
                                      each_file.stat().st_mtime, 
                                      local_modification_date_in_db)
-                        logger.debug('Overwriting %s in local.', each_file.path)
+                        logger.debug('Overwriting %s in remote.', each_file.path)
                         
                         utils.overwrite_remote_file_with_local(service, 
                                                                remote_file_dict[each_file.name]['id'], 
@@ -116,7 +116,7 @@ class GdriveSync:
                         logger.debug('remote_file_modified_time %s, remote_file_modification_time_in_db %s.', 
                                      remote_file_modified_time, 
                                      remote_file_modification_time_in_db)
-                        logger.debug('Overwriting %s in remote.', each_file.path)
+                        logger.debug('Overwriting %s in local.', each_file.path)
                         
                         utils.copy_remote_file_to_local(service, 
                                                         each_file.path, 

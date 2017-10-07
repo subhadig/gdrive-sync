@@ -9,6 +9,7 @@ from oauth2client import tools, client
 from os import path
 import httplib2
 from googleapiclient import discovery
+import magic
 
 _user_settings_template = { 'synced_dirs': {} }
 
@@ -104,7 +105,9 @@ def overwrite_remote_file_with_local(service, remote_file_id, local_file_path):
         remote_file_id: 'A String' that represents path the local file
         local_file_path: A os.DirEntry object that represents the local file
     '''
-    return service.files().update(fileId=remote_file_id, media_body=local_file_path).execute()
+    return service.files().update(fileId=remote_file_id, 
+                                  media_body=local_file_path,
+                                  media_mime_type=magic.from_file(local_file_path, True)).execute()
 
 def copy_remote_file_to_local(service, local_file_path, remote_file_id):
     '''
@@ -129,9 +132,11 @@ def copy_local_file_to_remote(local_file_path, remote_parent_dir_id, service=Non
     Returns:
         'A String' ID of the created google drive file
     '''
-    return check_and_get_service(service).files().create(body={'parents': [remote_parent_dir_id], 
+    return check_and_get_service(service).files().create(body={'parents': [remote_parent_dir_id],
                                                                'name': os.path.basename(local_file_path)},
-                                                         media_body=local_file_path).execute()['id']
+                                                         media_body=local_file_path,
+                                                         media_mime_type=magic.from_file(local_file_path, 
+                                                                                         True)).execute()['id']
 
 def get_remote_files_from_dir(service, parent_dir_id, nextPageToken=None):
     '''
@@ -245,4 +250,6 @@ def update_remote_file(remote_file_id, local_file_path, service=None):
         service: A googleapiclient.discovery.Resource object
     '''
     check_and_get_service(service).files().update(fileId=remote_file_id, 
-                                                  media_body=local_file_path).execute()
+                                                  media_body=local_file_path,
+                                                  media_mime_type=magic.from_file(local_file_path, 
+                                                                                  True)).execute()
