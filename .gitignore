@@ -1,3 +1,5 @@
+venv
+.idea
 .project
 .pydevproject
 __pycache__
