@@ -1,6 +1,6 @@
 import os
 from unittest import TestCase
-from unittest.mock import Mock, patch, MagicMock, call
+from unittest.mock import Mock, patch, MagicMock, call, create_autospec
 
 from gdrive_sync import utils
 
@@ -33,12 +33,22 @@ class TestUtils(TestCase):
             q="query", corpora="user", fields="fields", pageToken=None)
         mocked_service.files.return_value.list.return_value.execute.assert_called_once_with()
     
-    def test_list_files_under_local_dir(self):
-        mock = MagicMock(return_value='return')
-        with patch('os.scandir', mock):
-            lists = utils.list_files_under_local_dir('dir_path')
-            mock.assert_called_once_with(path='dir_path')
-            self.assertEquals('return', lists)
+    @patch('os.scandir', autospec=True)
+    def test_list_files_under_local_dir(self, mock_scandir):
+        mock_direntry_1 = Mock()
+        mock_direntry_1.is_dir.return_value = False
+        mock_direntry_2 = Mock()
+        mock_direntry_2.is_dir.return_value = True
+        mock_direntry_2.path = '/path/to/some/dir'
+        mock_direntry_3 = Mock()
+        mock_direntry_3.is_dir.return_value = False
+        mock_scandir.side_effect = [[mock_direntry_1, mock_direntry_2], [mock_direntry_3]]
+        
+        self.assertEqual([mock_direntry_1, {mock_direntry_2: [mock_direntry_3]} ], 
+                         utils.list_files_under_local_dir('dir_path'))
+        
+        mock_scandir.assert_has_calls([call(path='dir_path'), call(path='/path/to/some/dir')])
+        
         
     def test_convert_rfc3339_time_to_epoch(self):
         self.assertEqual(1498620320, utils.convert_rfc3339_time_to_epoch('2017-06-28T03:25:20.954Z'))

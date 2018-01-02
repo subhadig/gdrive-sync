@@ -15,6 +15,7 @@ setup(
         ],
         install_requires=['google-api-python-client',
                           'watchdog',
+                          'pyrfc3339',
                           'pydblite',
                           'python-magic'],
         entry_points={
@@ -23,5 +24,6 @@ setup(
             ]
         },
         include_package_data=True,
-        test_suite='tests'
+        tests_require=['nose'],
+        test_suite='nose.collector'
 )

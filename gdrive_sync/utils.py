@@ -73,9 +73,19 @@ def list_drive_files(service, fields, query=None, nextPageToken=None):
 
 def list_files_under_local_dir(dir_path):
     '''
-    Lists the files as os.DirEntry under a dir in local filesystem
+    Lists the files as os.DirEntry under a dir in local filesystem.
+    If the file is a dir, it creates a map for that entry where the key is
+    the os.DirEntry for that dir and the value is the list of files under
+    that dir.
     '''
-    return os.scandir(path=dir_path)
+    final_file_list = []
+    files = os.scandir(path=dir_path)
+    for each in files:
+        if each.is_dir():
+            final_file_list.append( {each : list_files_under_local_dir(each.path)} )
+        else:
+            final_file_list.append(each)
+    return final_file_list
 
 def convert_rfc3339_time_to_epoch(timestamp): #TODO: Modify test
     '''

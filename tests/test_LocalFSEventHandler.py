@@ -85,6 +85,7 @@ class TestLocalFSEventHandler(unittest.TestCase):
         
         mock_event = Mock()
         mock_event.src_path = 'path_to_file'
+        mock_event.dest_path = 'new_path_to_file'
         mock_event.is_directory = False
         self.mock_db_handler.get_remote_file_id.side_effect = ['remote_file_id_old', 'remote_parent_dir_id']
         mock_path_dirname.return_value = 'path_to_parent_dir'
@@ -96,5 +97,5 @@ class TestLocalFSEventHandler(unittest.TestCase):
         mock_delete_file_on_remote.assert_called_once_with('remote_file_id_old')
         self.mock_db_handler.get_remote_file_id.assert_has_calls([call('path_to_file'),
                                                                   call('path_to_parent_dir')])
-        mock_copy_local_file_to_remote.assert_called_once_with('path_to_file', 'remote_parent_dir_id')
-        self.mock_db_handler.insert_record.assert_called_once_with('path_to_file', 'remote_file_id_new', 1001, 1001)
+        mock_copy_local_file_to_remote.assert_called_once_with('new_path_to_file', 'remote_parent_dir_id')
+        self.mock_db_handler.insert_record.assert_called_once_with('new_path_to_file', 'remote_file_id_new', 1001, 1001)

@@ -68,7 +68,7 @@ class GdriveSync:
                 }
             remote_parent_dir_id: 'A String' representing the parent dir id for the remote_files
             local_files: A list of os.DirEntry
-            local_parent_dir: 'A String' reprenting the parent dir for the local_files 
+            local_parent_dir: 'A String' representing the parent dir for the local_files 
         '''
         remote_file_dict = {file['name']: file for file in remote_files}
         
