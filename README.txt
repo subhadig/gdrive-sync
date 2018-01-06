@@ -1,1 +1,1 @@
-This is python application syncs local files with google drive.
+This is a python application that syncs local files with google drive. //TODO Elaborate
