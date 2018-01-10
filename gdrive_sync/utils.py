@@ -1,5 +1,7 @@
 import os
 import logging
+import shutil
+
 from gdrive_sync import configs
 import json
 from pyrfc3339 import parse, generate
@@ -84,15 +86,14 @@ def list_files_under_local_dir(dir_path):
     If the file is a dir, it creates a map for that entry where the key is
     the os.DirEntry for that dir and the value is the list of files under
     that dir.
+    :return Generator of os.DirEntry and dict if file is dir
     """
-    final_file_list = []
     files = os.scandir(path=dir_path)
     for each in files:
         if each.is_dir():
-            final_file_list.append({each: list_files_under_local_dir(each.path)})
+            yield {each: list_files_under_local_dir(each.path)}
         else:
-            final_file_list.append(each)
-    return final_file_list
+            yield each
 
 
 def convert_rfc3339_time_to_epoch(timestamp):  # TODO: Modify test
@@ -160,6 +161,20 @@ def copy_local_file_to_remote(local_file_path, remote_parent_dir_id, service=Non
                                                                                          True)).execute()['id']
 
 
+def create_remote_dir(name, parent_dir, service=None):
+    """
+    Creates a dir at remote.
+    :param name: remote dir name
+    :param parent_dir: remote parent dir id
+    :param service: A googleapiclient.discovery.Resource object
+    :return: the id of the created remote dir
+    """
+    return check_and_get_service(service).files().create(body={'parents': [parent_dir],
+                                                               'name': name,
+                                                               'mimeType': 'application/vnd.google-apps.folder'})\
+        .execute()['id']
+
+
 def get_remote_files_from_dir(service, parent_dir_id, next_page_token=None):
     """
     Gets the remote file information from remote, returns file with
@@ -169,32 +184,33 @@ def get_remote_files_from_dir(service, parent_dir_id, next_page_token=None):
         parent_dir_id: 'A String' representing the id of the parent dir of the remote files
         next_page_token: 'A String' token to the google drive next page where the search will start from
     Results:
-        A list of files dir object
+        A generator of files dir object
     """
     results = list_drive_files(service,
                                'nextPageToken, files(id, name, modifiedTime, mimeType)',
                                query="'{}' in parents and trashed = false".format(parent_dir_id),
                                next_page_token=next_page_token)
     if 'nextPageToken' in results:
-        return results['files'] + get_remote_files_from_dir(service, parent_dir_id, results['nextPageToken'])
-    else:
-        return results['files']
+        yield from get_remote_files_from_dir(service, parent_dir_id, results['nextPageToken'])
+
+    yield from results['files']
 
 
 def list_remote_files_from_dir(service, parent_dir_id):
     """
     Gets the remote file and directory information from remote recursively. If a file is a dir,
-    it will generate the child files and dirs of that dir after that till it generates 'End of files under dir'
+    it will have the generator of the child files and dirs as 'children'.
 
     :param service: A googleapiclient.discovery.Resource object
     :param parent_dir_id: 'A String' representing the id of the parent dir of the remote files
     :return: A generator of files and dir object
     """
     for each in get_remote_files_from_dir(service, parent_dir_id):
-        yield each
+
         if each['mimeType'] == 'application/vnd.google-apps.folder':
-            yield from list_remote_files_from_dir(service, each['id'])
-            yield 'End of files under dir'
+            each['children'] = list_remote_files_from_dir(service, each['id'])
+
+        yield each
 
 
 def get_remote_dir(service, parent_dir_id, dir_list):
@@ -298,3 +314,24 @@ def update_remote_file(remote_file_id, local_file_path, service=None):
                                                   media_body=local_file_path,
                                                   media_mime_type=magic.from_file(local_file_path,
                                                                                   True)).execute()
+
+
+def create_local_dir(dir_path):
+    """
+    Creates dir in the local filesystem
+    :param dir_path:
+    :return:
+    """
+    os.mkdir(dir_path, 0o755)
+
+
+def delete_file_from_local(file_path):
+    """
+    Deletes a file or dir from local filesystem
+    :param file_path: A string path to the file
+    :return:
+    """
+    if os.path.isfile(file_path):
+        os.remove(file_path)
+    else:
+        shutil.rmtree(file_path)

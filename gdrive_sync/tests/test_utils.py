@@ -45,8 +45,15 @@ class TestUtils(TestCase):
         mock_direntry_3.is_dir.return_value = False
         mock_scandir.side_effect = [[mock_direntry_1, mock_direntry_2], [mock_direntry_3]]
 
-        self.assertEqual([mock_direntry_1, {mock_direntry_2: [mock_direntry_3]}],
-                         utils.list_files_under_local_dir('dir_path'))
+        # self.assertEqual([mock_direntry_1, {mock_direntry_2: [mock_direntry_3]}],
+        #                  utils.list_files_under_local_dir('dir_path'))
+        result_iter = utils.list_files_under_local_dir('dir_path')
+
+        self.assertEqual(mock_direntry_1, next(result_iter))
+        tmp_next = next(result_iter)
+        key = next(iter(tmp_next))
+        self.assertEqual(mock_direntry_2, key)
+        self.assertEqual(mock_direntry_3, next(tmp_next[key]))
 
         mock_scandir.assert_has_calls([call(path='dir_path'), call(path='/path/to/some/dir')])
 
@@ -125,8 +132,8 @@ class TestUtils(TestCase):
         mocked_list_drive_files = Mock(side_effect=[mocked_result_1, mocked_result_2])
 
         with patch('gdrive_sync.utils.list_drive_files', mocked_list_drive_files):
-            self.assertEqual(['file1', 'file2', 'file3', 'file4'],
-                             utils.get_remote_files_from_dir(mocked_service, 'test_parent_dir_id'))
+            self.assertEqual(['file3', 'file4', 'file1', 'file2'],
+                             [x for x in utils.get_remote_files_from_dir(mocked_service, 'test_parent_dir_id')])
 
         calls = [call(mocked_service,
                       'nextPageToken, files(id, name, modifiedTime, mimeType)',
@@ -143,14 +150,13 @@ class TestUtils(TestCase):
                                             mock_get_remote_files_from_dir):
         mock_file = {'mimeType': 'not_dir', 'id': 1}
         mock_dir = {'mimeType': 'application/vnd.google-apps.folder', 'id': 1}
-        mock_get_remote_files_from_dir.side_effect = [[mock_file, mock_dir], [mock_file]]
+        mock_get_remote_files_from_dir.side_effect = [[mock_file, mock_dir], [mock_file]].__iter__()
 
         result_iter = utils.list_remote_files_from_dir(Mock(name='service'), 'parent_dir_id')
 
         self.assertEqual(mock_file, next(result_iter))
         self.assertEqual(mock_dir, next(result_iter))
-        self.assertEqual(mock_file, next(result_iter))
-        self.assertEqual('End of files under dir', next(result_iter))
+        self.assertEqual(mock_file, next(mock_dir['children']))
 
     def test_get_remote_dir(self):
         mocked_service = Mock()
@@ -274,3 +280,24 @@ class TestUtils(TestCase):
                                                                          media_mime_type='test_mime_type')
         mocked_service.files.return_value.update.return_value.execute.assert_called_once_with()
         mocked_magic.assert_called_once_with('local_file_path', True)
+
+    @patch('os.mkdir', autospec=True)
+    def test_create_local_dir(self, mock_mkdir):
+        utils.create_local_dir('dir_path')
+
+        mock_mkdir.assert_called_once_with('dir_path', 0o755)
+
+    @patch('shutil.rmtree', autospec=True)
+    @patch('os.remove', autospec=True)
+    @patch('os.path.isfile', autospec=True)
+    def test_delete_file_from_local(self,
+                                    isfile_mock,
+                                    remove_mock,
+                                    rmtree_mock):
+        isfile_mock.side_effect = [True, False]
+
+        utils.delete_file_from_local('file')
+        utils.delete_file_from_local('dir')
+
+        remove_mock.assert_called_once_with('file')
+        rmtree_mock.assert_called_once_with('dir')

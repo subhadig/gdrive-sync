@@ -60,7 +60,7 @@ class GdriveSync:
 
         Args:
             service: A googleapiclient.discovery.Resource object
-            remote_files: A list of dicts that has the below format
+            remote_files: A generator of objects has the below format
                 {
                 'id': 'A String' that represents the id of the remote file
                 'name': 'A String' that represents the name of the remote file
@@ -71,86 +71,171 @@ class GdriveSync:
             local_files: A list of os.DirEntry
             local_parent_dir: 'A String' representing the parent dir for the local_files
         """
-        remote_file_dict = {file['name']: file for file in remote_files}
+        local_file_dict = {}
+        for file in local_files:
+            if type(file) == dict:
+                key = next(iter(file))
+                local_file_dict[key.name] = file[key]
+            else:
+                local_file_dict[file.name] = file
 
-        for each_file in local_files:
-            # If local file exists at remote
-            logger.debug('Looking up %s in remote.', each_file.name)
-            if each_file.name in remote_file_dict:
+        for each_remote_entry in remote_files:
+
+            # If remote file is a dir
+            if each_remote_entry['mimeType'] == 'application/vnd.google-apps.folder':
+                tmp_local_files = []
+
+                # If remote dir is not created in local
+                if not each_remote_entry['name'] in local_file_dict:
+                    local_dir_path = path.join(local_parent_dir, each_remote_entry['name'])
+
+                    if self._db_handler.get_local_file_path(each_remote_entry['id']):
+                        logger.debug('Dir %s was removed from local.', local_dir_path)
+
+                        utils.delete_file_on_remote(each_remote_entry['id'])
+
+                        self._db_handler.delete_record(local_dir_path)
+
+                        continue
+                    else:
+                        logger.debug('Creating dir %s in local.', local_dir_path)
+
+                        utils.create_local_dir(local_dir_path)
+
+                        self._db_handler.insert_record(local_dir_path,
+                                                       each_remote_entry['id'],
+                                                       int(time.time()),
+                                                       utils.convert_rfc3339_time_to_epoch(
+                                                           each_remote_entry['modifiedTime']))
+                else:
+                    tmp_local_files = local_file_dict[each_remote_entry['name']]
+                    del local_file_dict[each_remote_entry['name']]
+
+                self._compare_and_sync_files(service,
+                                             each_remote_entry['children'],
+                                             each_remote_entry['id'],
+                                             tmp_local_files,
+                                             os.path.join(local_parent_dir, each_remote_entry['name']))
+
+            # If remote file exists in local
+            elif each_remote_entry['name'] in local_file_dict:
+                local_file = local_file_dict[each_remote_entry['name']]
 
                 remote_file_modified_time = utils.convert_rfc3339_time_to_epoch(
-                    remote_file_dict[each_file.name]['modifiedTime'])
+                    each_remote_entry['modifiedTime'])
 
                 # If local file modification time is newer than remote file modification time
-                if each_file.stat().st_mtime > remote_file_modified_time:
+                if local_file.stat().st_mtime > remote_file_modified_time:
 
-                    local_modification_date_in_db = self._db_handler.get_local_modification_date(each_file.path)
-                    actual_local_modification_date = int(each_file.stat().st_mtime)
-                    # If local file modification time is newer than saved in db
+                    local_modification_date_in_db = self._db_handler.get_local_modification_date(local_file.path)
+                    actual_local_modification_date = int(local_file.stat().st_mtime)
+
+                    # If local file modification time is newer than saved in db else don't do anything
+                    # This cancels the cases where remote file was earlier copied to local
                     if (not local_modification_date_in_db or
                             actual_local_modification_date > local_modification_date_in_db):
-                        logger.debug('each_file.stat().st_mtime %s, local_modification_date_in_db %s.',
-                                     each_file.stat().st_mtime,
+                        logger.debug('local_file.stat().st_mtime %s, local_modification_date_in_db %s.',
+                                     local_file.stat().st_mtime,
                                      local_modification_date_in_db)
-                        logger.debug('Overwriting %s in remote.', each_file.path)
+                        logger.debug('Overwriting %s in remote.', local_file.path)
 
                         utils.overwrite_remote_file_with_local(service,
-                                                               remote_file_dict[each_file.name]['id'],
-                                                               each_file.path)
+                                                               each_remote_entry['id'],
+                                                               local_file.path)
 
-                        self._db_handler.insert_record(each_file.path,
-                                                       remote_file_dict[each_file.name]['id'],
+                        self._db_handler.insert_record(local_file.path,
+                                                       each_remote_entry['id'],
                                                        actual_local_modification_date,
                                                        int(time.time()))
 
                 # If remote file modification time is newer than local file modification time
-                elif remote_file_modified_time > each_file.stat().st_mtime:
+                elif remote_file_modified_time > local_file.stat().st_mtime:
 
                     remote_file_modification_time_in_db = self._db_handler.get_remote_modification_date(
-                        remote_file_dict[each_file.name]['id'])
+                        each_remote_entry['id'])
 
                     # If remote file modification time is newer than saved in db
+                    # This cancels the cases where local file was earlier copied to remote
                     if (not remote_file_modification_time_in_db or
                             remote_file_modified_time > remote_file_modification_time_in_db):
                         logger.debug('remote_file_modified_time %s, remote_file_modification_time_in_db %s.',
                                      remote_file_modified_time,
                                      remote_file_modification_time_in_db)
-                        logger.debug('Overwriting %s in local.', each_file.path)
+                        logger.debug('Overwriting %s in local.', local_file.path)
 
                         utils.copy_remote_file_to_local(service,
-                                                        each_file.path,
-                                                        remote_file_dict[each_file.name]['id'])
+                                                        local_file.path,
+                                                        each_remote_entry['id'])
 
-                        self._db_handler.insert_record(each_file.path,
-                                                       remote_file_dict[each_file.name]['id'],
+                        self._db_handler.insert_record(local_file.path,
+                                                       each_remote_entry['id'],
                                                        int(time.time()),
                                                        remote_file_modified_time)
-                del remote_file_dict[each_file.name]
-            else:  # local file does not exist at remote
+                del local_file_dict[each_remote_entry['name']]
 
-                logger.debug('Creating %s in local.', each_file.path)
+            else:  # remote file does not exist in local
 
-                remote_file_id = utils.copy_local_file_to_remote(each_file.path,
-                                                                 remote_parent_dir_id,
-                                                                 service)
-                self._db_handler.insert_record(each_file.path,
-                                               remote_file_id,
-                                               each_file.stat().st_mtime,
-                                               int(time.time()))
+                local_file_path = path.join(local_parent_dir, each_remote_entry['name'])
 
-        # remote files not existing in local
-        for file_name, file in remote_file_dict.items():
-            local_file_path = path.join(local_parent_dir, file_name)
+                if self._db_handler.get_local_file_path(each_remote_entry['id']):
+                    logger.debug('File %s was removed from local.', local_file_path)
 
-            logger.debug('Creating %s in local.', local_file_path)
+                    utils.delete_file_on_remote(each_remote_entry['id'])
 
-            utils.copy_remote_file_to_local(service,
-                                            local_file_path,
-                                            file['id'])
-            self._db_handler.insert_record(local_file_path,
-                                           file['id'],
-                                           int(time.time()),
-                                           utils.convert_rfc3339_time_to_epoch(file['modifiedTime']))
+                    self._db_handler.delete_record(local_file_path)
+
+                else:
+                    logger.debug('Creating %s in local.', local_file_path)
+
+                    utils.copy_remote_file_to_local(service,
+                                                    local_file_path,
+                                                    each_remote_entry['id'])
+                    self._db_handler.insert_record(local_file_path,
+                                                   each_remote_entry['id'],
+                                                   int(time.time()),
+                                                   utils.convert_rfc3339_time_to_epoch(
+                                                       each_remote_entry['modifiedTime']))
+
+        # copy the local files that do not exist at remote
+        self._copy_local_to_remote(local_file_dict, remote_parent_dir_id, service)
+
+    def _copy_local_to_remote(self, local_file_dict, remote_parent_dir_id, service):
+        for file_name, local_file in local_file_dict.items():
+
+            if type(local_file) == dict:
+                dir_key = next(iter(local_file))
+
+                if self._db_handler.get_remote_file_id(dir_key.path):
+                    logger.debug('Remote dir %s was deleted.', dir_key.path)
+                    utils.delete_file_from_local(dir_key.path)
+                    self._db_handler.delete_record(dir_key.path)
+
+                else:
+                    logger.debug('Creating dir %s at remote.', dir_key.path)
+                    remote_dir_id = utils.create_remote_dir(file_name, remote_parent_dir_id)
+                    self._db_handler.insert_record(dir_key.path,
+                                                   remote_dir_id,
+                                                   dir_key.stat().st_mtime,
+                                                   int(time.time()))
+                    self._copy_local_to_remote({file.name: file for file in local_file[dir_key]},
+                                               remote_dir_id,
+                                               service)
+            else:
+                if self._db_handler.get_remote_file_id(local_file.path):
+                    logger.debug('Remote dir %s was deleted.', local_file.path)
+                    utils.delete_file_from_local(local_file.path)
+                    self._db_handler.delete_record(local_file.path)
+
+                else:
+                    logger.debug('Creating file %s at remote.', local_file.path)
+
+                    remote_file_id = utils.copy_local_file_to_remote(local_file.path,
+                                                                     remote_parent_dir_id,
+                                                                     service)
+                    self._db_handler.insert_record(local_file.path,
+                                                   remote_file_id,
+                                                   local_file.stat().st_mtime,
+                                                   int(time.time()))
 
     def sync_onetime(self, synced_dirs_dict):
         """
