@@ -35,8 +35,8 @@ class GdriveSync:
                                            remote_dir['id'],
                                            os.stat(local_dir).st_mtime,
                                            utils.convert_rfc3339_time_to_epoch(remote_dir['modifiedTime']))
-            remote_files_under_dir = utils.get_remote_files_from_dir(service,
-                                                                     remote_dir['id'])
+            remote_files_under_dir = utils.list_remote_files_from_dir(service,
+                                                                      remote_dir['id'])
             local_files_under_dir = utils.list_files_under_local_dir(local_dir)
             self._compare_and_sync_files(service,
                                          remote_files_under_dir,

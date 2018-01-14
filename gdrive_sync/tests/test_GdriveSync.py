@@ -1,5 +1,4 @@
 from unittest import TestCase
-import os
 from unittest.mock import Mock, patch, call
 from unittest.case import skip
 import time
@@ -27,18 +26,18 @@ class TestGdriveSync(TestCase):
     @patch('os.stat', autospec=True)
     @patch('gdrive_sync.utils.convert_rfc3339_time_to_epoch', autospec=True)
     @patch('gdrive_sync.utils.list_files_under_local_dir', autospec=True)
-    @patch('gdrive_sync.utils.get_remote_files_from_dir', autospec=True)
+    @patch('gdrive_sync.utils.list_remote_files_from_dir', autospec=True)
     @patch('gdrive_sync.utils.get_remote_dir', autospec=True)
     def test_process_dir_pairs(self,
                                mock_get_remote_dir,
-                               mock_get_remote_files_from_dir,
+                               mock_list_remote_files_from_dir,
                                mock_list_files_under_local_dir,
                                mock_convert_rfc3339_time_to_epoch,
                                mock_os_stat):
         mocked_service = Mock()
         dir_pairs = {'/home/test1/child': '/test1/child'}
         mock_get_remote_dir.return_value = {'id': 'remote_dir_id', 'modifiedTime': 'test_modifiedTime'}
-        mock_get_remote_files_from_dir.return_value = 'remote_files_under_dir'
+        mock_list_remote_files_from_dir.return_value = 'remote_files_under_dir'
         mock_list_files_under_local_dir.return_value = 'local_files_under_dir'
         self.gdriveSync._compare_and_sync_files = Mock()
         mock_convert_rfc3339_time_to_epoch.return_value = 101
@@ -48,7 +47,7 @@ class TestGdriveSync(TestCase):
         self.gdriveSync._process_dir_pairs(mocked_service, dir_pairs)
 
         mock_get_remote_dir.assert_called_once_with(mocked_service, 'root', ['test1', 'child'])
-        mock_get_remote_files_from_dir.assert_called_once_with(mocked_service, 'remote_dir_id')
+        mock_list_remote_files_from_dir.assert_called_once_with(mocked_service, 'remote_dir_id')
         mock_list_files_under_local_dir.assert_called_once_with('/home/test1/child')
         self.gdriveSync._compare_and_sync_files.assert_called_once_with(mocked_service,
                                                                         'remote_files_under_dir',

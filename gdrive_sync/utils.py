@@ -178,7 +178,8 @@ def create_remote_dir(name, parent_dir, service=None):
 def get_remote_files_from_dir(service, parent_dir_id, next_page_token=None):
     """
     Gets the remote file information from remote, returns file with
-    id, name, modifiedTime, mimeType fields.
+    id, name, modifiedTime, mimeType fields. For most of the use-cases, list_remote_files_from_dir
+    is a more suitable option.
     Args:
         service: A googleapiclient.discovery.Resource object
         parent_dir_id: 'A String' representing the id of the parent dir of the remote files
