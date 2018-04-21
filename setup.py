@@ -7,7 +7,7 @@ setup(
         author='Subhadip Ghosh',
         author_email='subhadipghosh11@gmail.com',
         description='A Google drive client',
-        long_description=open('README.txt').read(),
+        long_description=open('README.md').read(),
         classifiers=[
         'Development Status :: Beta',
         'Programming Language :: Python :: 3.5',

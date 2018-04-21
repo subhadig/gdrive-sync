@@ -294,9 +294,9 @@ class TestGdriveSync(TestCase):
     @skip("This needs to run manually")
     def test_watch_local_dir_manual(self):
         logger.info('Starting _process_dir_pairs')
-        self.gdriveSync._process_dir_pairs(utils.get_service(), {'/tmp/gdrive-sync': '/test folder'})
+        self.gdriveSync.sync_onetime({'/home/subhadip/gdrive': '/test folder'})
         logger.info('Starting _watch_local_dir')
-        self.gdriveSync._watch_local_dir('/tmp/gdrive-sync/')
+        self.gdriveSync._watch_local_dir('/home/subhadip/gdrive/')
         try:
             logger.info('Sleeping')
             time.sleep(600)
@@ -304,3 +304,4 @@ class TestGdriveSync(TestCase):
             logger.info('Interrupted')
         logger.info('Stopping sync')
         self.gdriveSync.stop_sync()
+        
